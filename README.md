@@ -1,47 +1,21 @@
-# Knowledge Graph Learning Platform — Prototype Schematic
+# jbl prototype
 
 ## Overview
 
-A web application prototype for a K-12 school that allows teachers to upload a curriculum document and generate an AI-powered knowledge graph representing the learning path for a given subject and grade. The teacher interacts with a conversational agent to make changes to the graph in natural language. The graph re-renders in real time as the agent applies changes via tool calls.
-
-This document is the full technical specification for the prototype. It covers the stack, project structure, data models, API routes, agent design, tool definitions, and workflow.
+A web app prototype that allows teachers to upload a curriculum document and generate an LLM-powered knowledge graph representing the learning path for a given subject and grade. The teacher interacts with a conversational agent to make changes to the graph in natural language. The graph re-renders in real time as the agent applies changes via tool calls.
 
 ---
 
 ## Tech Stack
 
-| Layer | Choice | Reason |
+| Layer | Choice |
 |---|---|---|
-| Framework | Next.js 14 (App Router) | Single repo for frontend and backend API routes |
-| Frontend UI | React + Tailwind CSS | Component-based UI, good ecosystem |
-| Graph Visualization | React Flow | Purpose-built for interactive node/edge graphs |
-| AI Agent | Anthropic Claude API (claude-sonnet-4-5) | Tool use, streaming, reliable instruction following |
-| Anthropic SDK | `@anthropic-ai/sdk` (Node) | Official SDK, streaming support |
-| Document Parsing | `mammoth` | Extracts clean text from .docx Word documents |
-| Language | TypeScript | Type safety across frontend and backend |
-
----
-
-## Dependencies
-
-```json
-{
-  "dependencies": {
-    "next": "^14.0.0",
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0",
-    "reactflow": "^11.0.0",
-    "@anthropic-ai/sdk": "^0.24.0",
-    "mammoth": "^1.7.0",
-    "tailwindcss": "^3.0.0"
-  },
-  "devDependencies": {
-    "typescript": "^5.0.0",
-    "@types/react": "^18.0.0",
-    "@types/node": "^20.0.0"
-  }
-}
-```
+| Framework | Next.js 14 (App Router) |
+| Frontend UI | React + Tailwind CSS |
+| Graph Visualization | React Flow |
+| AI Agent | Anthropic Claude API (claude-sonnet-4-5) |
+| Document Parsing | `mammoth` |
+| Language | TypeScript |
 
 ---
 
@@ -290,7 +264,7 @@ export const tools = [
       properties: {
         id: { type: "string", description: "Unique readable slug e.g. 'fractions-multiplication'" },
         label: { type: "string", description: "Display name e.g. 'Multiplying Fractions'" },
-        type: { type: "string", enum: ["topic", "subtopic"] },
+        topic: { type: "string", description: "Topic name e.g. 'Fractions'" },
         description: { type: "string", description: "Brief description of the learning objective" }
       },
       required: ["id", "label", "type"]
@@ -316,7 +290,7 @@ export const tools = [
         node_id: { type: "string", description: "ID of the node to update" },
         label: { type: "string", description: "New display label" },
         description: { type: "string", description: "New description" },
-        type: { type: "string", enum: ["topic", "subtopic"] }
+        topic: { type: "string", description: "Topic name e.g. 'Fractions'" }
       },
       required: ["node_id"]
     }
@@ -394,8 +368,7 @@ Defined in `lib/graphUtils.ts`. Each tool call from Claude is validated and appl
 ### `GraphCanvas.tsx`
 - Receives `GraphState` as props
 - Renders nodes and edges using React Flow
-- Read-only for now (no drag editing — all edits via agent)
-- Styled to differentiate `topic` vs `subtopic` node types visually
+- Styled to differentiate node types by topic
 - Re-renders automatically when graph state prop changes
 
 ### `ChatPanel.tsx`
@@ -406,6 +379,7 @@ Defined in `lib/graphUtils.ts`. Each tool call from Claude is validated and appl
   - Appends text chunks to the current assistant message in real time
   - On `graph_update` event: updates parent graph state → triggers GraphCanvas re-render
 - Shows typing indicator while streaming
+- Shows tool calls being made live in chat
 
 ### `MessageBubble.tsx`
 - Renders a single chat message
@@ -469,30 +443,3 @@ ANTHROPIC_API_KEY=your_api_key_here
 ```
 
 ---
-
-## Key Implementation Notes for Claude Code
-
-1. **Graph state is owned by the frontend.** It is passed to `/api/chat` on every request and returned updated via the stream. The server does not persist graph state between requests.
-
-2. **Initial generation and agent chat are separate routes.** `/api/generate` is a plain Claude call with no tools. `/api/chat` is the agentic streaming route with tools.
-
-3. **Streaming response format** from `/api/chat` uses newline-delimited JSON events:
-   ```
-   {"type":"text","content":"I'll add that subtopic now..."}
-   {"type":"graph_update","graph":{...}}
-   {"type":"done"}
-   ```
-
-4. **Node IDs must be readable slugs** — generated during initial graph creation and maintained by the agent. This is critical for Claude to reliably reference nodes across multi-step tool calls.
-
-5. **React Flow requires x/y positions** on nodes. Auto-layout positions on initial generation using a simple layered layout (topics as rows, subtopics underneath). Positions do not need to be semantically meaningful for the prototype.
-
-6. **Tool results are passed back to Claude** in the messages array as `tool_result` blocks before Claude continues streaming its response. Follow the Anthropic SDK's tool use pattern exactly.
-
-7. **Validate all tool inputs server-side** before applying them. Return descriptive error messages to Claude on failure — it will self-correct without needing a retry from the user.
-
-8. **The system prompt is rebuilt on every `/api/chat` request** with the current graph state serialized as JSON. This ensures Claude always has accurate context before reasoning about changes.
-
-9. **localStorage is the persistence layer.** On every state change (after generation, after each agent response) serialize and write graph + messages to localStorage. On app mount, read and restore. Use the fixed keys defined in the Session Persistence section — do not generate dynamic keys.
-
-10. **The Reset button wipes all localStorage keys and resets React state in one operation.** After reset the app should look identical to a fresh first load with the upload panel visible and no graph or chat history present.
