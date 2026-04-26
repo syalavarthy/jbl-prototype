@@ -52,7 +52,7 @@ export default function AssessPopover({
     onClose();
   }
 
-  const stateLabel = masteryState.replace("_", " ");
+  const stateLabel = masteryState.replaceAll("_", " ");
   const hasScore = progress?.score !== undefined;
   const lastDate = progress?.assessedAt
     ? new Date(progress.assessedAt).toISOString().split("T")[0]
