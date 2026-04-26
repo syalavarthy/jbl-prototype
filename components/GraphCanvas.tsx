@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ReactFlow, {
   Background,
   BackgroundVariant,
@@ -17,11 +17,16 @@ import ReactFlow, {
   useEdgesState,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { GraphState } from "@/lib/types";
+import { GraphNode, GraphState, MasteryState, StudentProgress } from "@/lib/types";
+import AssessPopover from "@/components/AssessPopover";
 
 interface Props {
   graph: GraphState;
   onNodeMove: (id: string, x: number, y: number) => void;
+  viewMode: 'edit' | 'progress';
+  masteryMap: Record<string, MasteryState>;
+  studentProgress: StudentProgress;
+  onScoreSubmit: (nodeId: string, score: number) => void;
 }
 
 interface NodeData {
@@ -30,6 +35,9 @@ interface NodeData {
   description?: string;
   nodeId: string;
   color: TopicColor;
+  viewMode: 'edit' | 'progress';
+  masteryState?: MasteryState;
+  isFrontier?: boolean;
 }
 
 interface TopicColor {
@@ -59,18 +67,66 @@ function buildTopicColorMap(nodes: GraphState["nodes"]): Map<string, TopicColor>
   return map;
 }
 
-function CustomNode({ data }: NodeProps<NodeData>) {
-  const { color } = data;
+function getMasteryStyles(
+  masteryState: MasteryState,
+  color: TopicColor
+): React.CSSProperties {
+  switch (masteryState) {
+    case 'locked':
+      return {
+        background: color.bg,
+        color: color.text,
+        border: `1px dashed ${color.border}`,
+        opacity: 0.3,
+      };
+    case 'available':
+      return {
+        background: color.bg,
+        color: color.text,
+        border: `1px solid ${color.border}`,
+        opacity: 1,
+      };
+    case 'in_progress':
+      return {
+        background: color.bg,
+        color: color.text,
+        border: `1px solid ${color.border}`,
+        boxShadow: `0 0 8px ${color.border}55`,
+        opacity: 1,
+      };
+    case 'mastered':
+      return {
+        background: color.border,
+        color: '#0f0f0f',
+        border: `1px solid ${color.border}`,
+        fontWeight: 600,
+        opacity: 1,
+      };
+    case 'struggling':
+      return {
+        background: color.bg,
+        color: '#fb6f92',
+        border: '1px solid #f43f6e',
+        opacity: 1,
+      };
+  }
+}
 
-  return (
-    <div className="relative group">
-      <Handle
-        type="target"
-        position={Position.Top}
-        style={{ background: color.border, border: "none", width: 6, height: 6 }}
-      />
-      <div
-        style={{
+function CustomNode({ data }: NodeProps<NodeData>) {
+  const { color, viewMode, masteryState, isFrontier } = data;
+
+  const nodeStyle: React.CSSProperties =
+    viewMode === 'progress' && masteryState
+      ? {
+          borderRadius: "4px",
+          padding: "5px 12px",
+          fontSize: "11px",
+          cursor: "pointer",
+          userSelect: "none",
+          whiteSpace: "nowrap",
+          ...getMasteryStyles(masteryState, color),
+        }
+      : {
           background: color.bg,
           color: color.text,
           border: `1px solid ${color.border}`,
@@ -81,102 +137,196 @@ function CustomNode({ data }: NodeProps<NodeData>) {
           cursor: "grab",
           userSelect: "none",
           whiteSpace: "nowrap",
-        }}
-      >
-        {data.label}
-      </div>
+        };
+
+  const handleBg = viewMode === 'progress' && masteryState === 'struggling'
+    ? '#f43f6e'
+    : color.border;
+
+  return (
+    <div className="relative group">
+      <Handle
+        type="target"
+        position={Position.Top}
+        style={{ background: handleBg, border: "none", width: 6, height: 6 }}
+      />
+
+      {/* Frontier pulse ring */}
+      {viewMode === 'progress' && isFrontier && (
+        <div
+          style={{
+            position: "absolute",
+            inset: "-5px",
+            borderRadius: "8px",
+            border: `2px solid ${color.border}`,
+            animation: "frontier-pulse 1.5s ease-in-out infinite",
+            pointerEvents: "none",
+          }}
+        />
+      )}
+
+      <div style={nodeStyle}>{data.label}</div>
+
       <Handle
         type="source"
         position={Position.Bottom}
-        style={{ background: color.border, border: "none", width: 6, height: 6 }}
+        style={{ background: handleBg, border: "none", width: 6, height: 6 }}
       />
 
-      {/* Hover tooltip */}
-      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-        <div
-          style={{
-            background: "#0f0f0f",
-            border: `1px solid ${color.border}`,
-            borderRadius: "4px",
-            padding: "8px 10px",
-            minWidth: "160px",
-            maxWidth: "240px",
-          }}
-        >
-          <p style={{ color: color.tooltipText, fontSize: "10px", fontWeight: "500", marginBottom: "3px" }}>
-            {data.label}
-          </p>
-          <p style={{ color: "#555", fontSize: "9px", marginBottom: "3px" }}>
-            id: {data.nodeId}
-          </p>
-          <p style={{ color: "#555", fontSize: "9px", marginBottom: data.description ? "4px" : "0" }}>
-            topic: {data.topic}
-          </p>
-          {data.description && (
-            <p style={{ color: "#888", fontSize: "9px", lineHeight: "1.4" }}>
-              {data.description}
+      {/* Hover tooltip (edit mode only) */}
+      {viewMode === 'edit' && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+          <div
+            style={{
+              background: "#0f0f0f",
+              border: `1px solid ${color.border}`,
+              borderRadius: "4px",
+              padding: "8px 10px",
+              minWidth: "160px",
+              maxWidth: "240px",
+            }}
+          >
+            <p style={{ color: color.tooltipText, fontSize: "10px", fontWeight: "500", marginBottom: "3px" }}>
+              {data.label}
             </p>
-          )}
+            <p style={{ color: "#555", fontSize: "9px", marginBottom: "3px" }}>
+              id: {data.nodeId}
+            </p>
+            <p style={{ color: "#555", fontSize: "9px", marginBottom: data.description ? "4px" : "0" }}>
+              topic: {data.topic}
+            </p>
+            {data.description && (
+              <p style={{ color: "#888", fontSize: "9px", lineHeight: "1.4" }}>
+                {data.description}
+              </p>
+            )}
+          </div>
+          <div
+            style={{
+              width: 0,
+              height: 0,
+              borderLeft: "5px solid transparent",
+              borderRight: "5px solid transparent",
+              borderTop: `5px solid ${color.border}`,
+              margin: "0 auto",
+            }}
+          />
         </div>
-        <div
-          style={{
-            width: 0,
-            height: 0,
-            borderLeft: "5px solid transparent",
-            borderRight: "5px solid transparent",
-            borderTop: `5px solid ${color.border}`,
-            margin: "0 auto",
-          }}
-        />
-      </div>
+      )}
     </div>
   );
 }
 
+if (typeof document !== 'undefined' && !document.getElementById('frontier-pulse-style')) {
+  const style = document.createElement('style');
+  style.id = 'frontier-pulse-style';
+  style.textContent = `
+    @keyframes frontier-pulse {
+      0%, 100% { opacity: 0.3; transform: scale(1); }
+      50% { opacity: 0.7; transform: scale(1.08); }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 const nodeTypes = { custom: CustomNode };
 
-function toRFNodes(graph: GraphState, colorMap: Map<string, TopicColor>): Node<NodeData>[] {
-  return graph.nodes.map((n) => ({
-    id: n.id,
-    data: {
-      label: n.label,
-      topic: n.topic,
-      description: n.description,
-      nodeId: n.id,
-      color: colorMap.get(n.topic) ?? TOPIC_PALETTE[0],
-    },
-    position: n.position ?? { x: 0, y: 0 },
-    type: "custom",
-  }));
+function toRFNodes(
+  graph: GraphState,
+  colorMap: Map<string, TopicColor>,
+  viewMode: 'edit' | 'progress',
+  masteryMap: Record<string, MasteryState>
+): Node<NodeData>[] {
+  const prereqs = new Map<string, string[]>();
+  graph.nodes.forEach((n) => prereqs.set(n.id, []));
+  graph.edges.forEach((e) => prereqs.get(e.target)?.push(e.source));
+
+  return graph.nodes.map((n) => {
+    const masteryState = masteryMap[n.id];
+    const isFrontier =
+      viewMode === 'progress' &&
+      masteryState === 'available' &&
+      (prereqs.get(n.id) ?? []).every((pid) => masteryMap[pid] === 'mastered');
+
+    return {
+      id: n.id,
+      data: {
+        label: n.label,
+        topic: n.topic,
+        description: n.description,
+        nodeId: n.id,
+        color: colorMap.get(n.topic) ?? TOPIC_PALETTE[0],
+        viewMode,
+        masteryState,
+        isFrontier,
+      },
+      position: n.position ?? { x: 0, y: 0 },
+      type: "custom",
+    };
+  });
 }
 
-function toRFEdges(graph: GraphState): Edge[] {
-  return graph.edges.map((e) => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    animated: false,
-    style: { stroke: "#3a3a3a" },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#3a3a3a", width: 16, height: 16 },
-  }));
+function toRFEdges(
+  graph: GraphState,
+  viewMode: 'edit' | 'progress',
+  masteryMap: Record<string, MasteryState>,
+  colorMap: Map<string, TopicColor>
+): Edge[] {
+  return graph.edges.map((e) => {
+    const bothMastered =
+      viewMode === 'progress' &&
+      masteryMap[e.source] === 'mastered' &&
+      masteryMap[e.target] === 'mastered';
+
+    const sourceColor = colorMap.get(
+      graph.nodes.find((n) => n.id === e.source)?.topic ?? ''
+    );
+    const edgeColor = bothMastered ? (sourceColor?.border ?? '#2ab8b8') : '#2a2a2a';
+
+    return {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      animated: bothMastered,
+      style: { stroke: edgeColor },
+      markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor, width: 16, height: 16 },
+    };
+  });
 }
 
-function GraphCanvasInner({ graph, onNodeMove }: Props) {
+function GraphCanvasInner({ graph, onNodeMove, viewMode, masteryMap, studentProgress, onScoreSubmit }: Props) {
   const colorMap = useMemo(() => buildTopicColorMap(graph.nodes), [graph.nodes]);
-  const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>(toRFNodes(graph, colorMap));
-  const [edges, setEdges, onEdgesChange] = useEdgesState(toRFEdges(graph));
+  const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>(
+    toRFNodes(graph, colorMap, viewMode, masteryMap)
+  );
+  const [edges, setEdges, onEdgesChange] = useEdgesState(
+    toRFEdges(graph, viewMode, masteryMap, colorMap)
+  );
+  const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
 
   useEffect(() => {
-    setNodes(toRFNodes(graph, colorMap));
-  }, [graph.nodes, colorMap, setNodes]); // eslint-disable-line react-hooks/exhaustive-deps
+    setNodes(toRFNodes(graph, colorMap, viewMode, masteryMap));
+  }, [graph.nodes, colorMap, viewMode, masteryMap, setNodes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    setEdges(toRFEdges(graph));
-  }, [graph.edges, setEdges]); // eslint-disable-line react-hooks/exhaustive-deps
+    setEdges(toRFEdges(graph, viewMode, masteryMap, colorMap));
+  }, [graph.edges, viewMode, masteryMap, colorMap, setEdges]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (viewMode !== 'progress') setActiveNodeId(null);
+  }, [viewMode]);
 
   const handleDragStop: NodeDragHandler = (_event, node) => {
     onNodeMove(node.id, node.position.x, node.position.y);
   };
+
+  const handleNodeClick = useCallback(
+    (_event: React.MouseEvent, node: Node<NodeData>) => {
+      if (viewMode !== 'progress') return;
+      setActiveNodeId((prev) => (prev === node.id ? null : node.id));
+    },
+    [viewMode]
+  );
 
   if (graph.nodes.length === 0) {
     return (
@@ -186,35 +336,73 @@ function GraphCanvasInner({ graph, onNodeMove }: Props) {
     );
   }
 
+  const activeGraphNode = activeNodeId
+    ? graph.nodes.find((n) => n.id === activeNodeId)
+    : null;
+  const activeRFNode = activeNodeId
+    ? nodes.find((n) => n.id === activeNodeId)
+    : null;
+
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nodeTypes}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      onNodeDragStop={handleDragStop}
-      fitView
-      nodesConnectable={false}
-      elementsSelectable={false}
-    >
-      <Background color="#242424" variant={BackgroundVariant.Dots} gap={20} size={1} />
-      <Controls
-        style={{
-          background: "#141414",
-          border: "1px solid #2a2a2a",
-          borderRadius: "4px",
-        }}
-      />
-    </ReactFlow>
+    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onNodeDragStop={handleDragStop}
+        onNodeClick={handleNodeClick}
+        fitView
+        nodesConnectable={false}
+        elementsSelectable={false}
+      >
+        <Background color="#242424" variant={BackgroundVariant.Dots} gap={20} size={1} />
+        <Controls
+          style={{
+            background: "#141414",
+            border: "1px solid #2a2a2a",
+            borderRadius: "4px",
+          }}
+        />
+      </ReactFlow>
+
+      {viewMode === 'progress' && activeGraphNode && activeRFNode && (
+        <div
+          style={{
+            position: "absolute",
+            left: activeRFNode.position.x + 20,
+            top: activeRFNode.position.y - 10,
+            zIndex: 10,
+          }}
+        >
+          <AssessPopover
+            node={activeGraphNode}
+            progress={studentProgress.nodeProgress[activeNodeId!]}
+            masteryState={masteryMap[activeNodeId!] ?? 'available'}
+            borderColor={activeRFNode.data.color.border}
+            textColor={activeRFNode.data.color.text}
+            onSubmit={(score) => onScoreSubmit(activeNodeId!, score)}
+            onClose={() => setActiveNodeId(null)}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
-export default function GraphCanvas({ graph, onNodeMove }: Props) {
+export default function GraphCanvas({ graph, onNodeMove, viewMode, masteryMap, studentProgress, onScoreSubmit }: Props) {
   return (
     <ReactFlowProvider>
       <div style={{ width: "100%", height: "100%", background: "#1a1a1a" }}>
-        <GraphCanvasInner graph={graph} onNodeMove={onNodeMove} />
+        <GraphCanvasInner
+          graph={graph}
+          onNodeMove={onNodeMove}
+          viewMode={viewMode}
+          masteryMap={masteryMap}
+          studentProgress={studentProgress}
+          onScoreSubmit={onScoreSubmit}
+        />
       </div>
     </ReactFlowProvider>
   );
