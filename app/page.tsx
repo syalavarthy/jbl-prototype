@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChatMessage, GraphState, MasteryState, NodeProgress, StudentProgress } from "@/lib/types";
+import { ChatMessage, GraphState, MasteryMode, BKTParams, AssessmentResponse, NodeProgress, StudentProgress } from "@/lib/types";
 import GraphCanvas from "@/components/GraphCanvas";
 import ChatPanel from "@/components/ChatPanel";
 import UploadPanel from "@/components/UploadPanel";
-import { computeMasteryStates } from "@/lib/graphUtils";
+import { computeMasteryStates, computeBKT } from "@/lib/graphUtils";
 
 const STORAGE_KEYS = {
   graph: "kg_graph",
@@ -27,11 +27,12 @@ export default function Home() {
   const [documentText, setDocumentText] = useState("");
   const [initialized, setInitialized] = useState(false);
   const [viewMode, setViewMode] = useState<'edit' | 'progress'>('edit');
+  const [masteryMode, setMasteryMode] = useState<MasteryMode>('score');
   const [studentProgress, setStudentProgress] = useState<StudentProgress>(DEFAULT_STUDENT);
 
   const masteryMap = useMemo(
-    () => computeMasteryStates(graph, studentProgress),
-    [graph, studentProgress]
+    () => computeMasteryStates(graph, studentProgress, masteryMode),
+    [graph, studentProgress, masteryMode]
   );
 
   // Restore session from localStorage on mount
@@ -73,6 +74,20 @@ export default function Home() {
   const handleScoreSubmit = useCallback((nodeId: string, score: number) => {
     setStudentProgress((prev) => {
       const existing = prev.nodeProgress[nodeId];
+      const node = graph.nodes.find((n) => n.id === nodeId);
+      const dagDepth = node?.position ? Math.round((node.position.y - 80) / 140) : 0;
+      const params: BKTParams = existing?.params ?? {
+        pL0: Math.min(0.1 + 0.05 * dagDepth, 0.5),
+        pT: 0.1,
+        pG: 0.2,
+        pS: 0.1,
+      };
+      const newResponse: AssessmentResponse = {
+        timestamp: new Date().toISOString(),
+        correct: score >= 70,
+      };
+      const responses = [...(existing?.responses ?? []), newResponse];
+      const pMastery = computeBKT(responses, params);
       return {
         ...prev,
         nodeProgress: {
@@ -82,11 +97,14 @@ export default function Home() {
             score,
             assessedAt: new Date().toISOString(),
             attempts: (existing?.attempts ?? 0) + 1,
+            params,
+            responses,
+            pMastery,
           },
         },
       };
     });
-  }, []);
+  }, [graph.nodes]);
 
   const handleViewModeToggle = useCallback(() => {
     setViewMode((m) => (m === 'edit' ? 'progress' : 'edit'));
@@ -107,6 +125,7 @@ export default function Home() {
     localStorage.removeItem(STORAGE_KEYS.students);
     setStudentProgress(DEFAULT_STUDENT);
     setViewMode('edit');
+    setMasteryMode('score');
   };
 
   return (
@@ -120,6 +139,19 @@ export default function Home() {
           <p className="text-xs text-[#555]">knowledge graph generator + editor</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          {viewMode === 'progress' && (
+            <button
+              onClick={() => setMasteryMode((m) => (m === 'score' ? 'bkt' : 'score'))}
+              className="text-xs border rounded px-3 py-1.5 transition-colors"
+              style={
+                masteryMode === 'bkt'
+                  ? { color: "#a78bfa", borderColor: "#7c3aed" }
+                  : { color: "#555", borderColor: "#2a2a2a" }
+              }
+            >
+              {masteryMode === 'score' ? 'bkt mode' : 'score mode'}
+            </button>
+          )}
           <button
             onClick={handleViewModeToggle}
             className="text-xs border rounded px-3 py-1.5 transition-colors"
@@ -151,6 +183,7 @@ export default function Home() {
               graph={graph}
               onNodeMove={handleNodeMove}
               viewMode={viewMode}
+              masteryMode={masteryMode}
               masteryMap={masteryMap}
               studentProgress={studentProgress}
               onScoreSubmit={handleScoreSubmit}

@@ -17,13 +17,14 @@ import ReactFlow, {
   useEdgesState,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { GraphNode, GraphState, MasteryState, StudentProgress } from "@/lib/types";
+import { GraphNode, GraphState, MasteryMode, MasteryState, StudentProgress } from "@/lib/types";
 import AssessPopover from "@/components/AssessPopover";
 
 interface Props {
   graph: GraphState;
   onNodeMove: (id: string, x: number, y: number) => void;
   viewMode: 'edit' | 'progress';
+  masteryMode: MasteryMode;
   masteryMap: Record<string, MasteryState>;
   studentProgress: StudentProgress;
   onScoreSubmit: (nodeId: string, score: number) => void;
@@ -305,7 +306,7 @@ function toRFEdges(
   });
 }
 
-function GraphCanvasInner({ graph, onNodeMove, viewMode, masteryMap, studentProgress, onScoreSubmit }: Props) {
+function GraphCanvasInner({ graph, onNodeMove, viewMode, masteryMode, masteryMap, studentProgress, onScoreSubmit }: Props) {
   const colorMap = useMemo(() => buildTopicColorMap(graph.nodes), [graph.nodes]);
   const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>(
     toRFNodes(graph, colorMap, viewMode, masteryMap)
@@ -416,6 +417,7 @@ function GraphCanvasInner({ graph, onNodeMove, viewMode, masteryMap, studentProg
             node={activeGraphNode}
             progress={studentProgress.nodeProgress[activeNodeId!]}
             masteryState={masteryMap[activeNodeId!] ?? 'available'}
+            masteryMode={masteryMode}
             borderColor={activeRFNode.data.color.border}
             textColor={activeRFNode.data.color.text}
             onSubmit={handlePopoverSubmit}
@@ -427,7 +429,7 @@ function GraphCanvasInner({ graph, onNodeMove, viewMode, masteryMap, studentProg
   );
 }
 
-export default function GraphCanvas({ graph, onNodeMove, viewMode, masteryMap, studentProgress, onScoreSubmit }: Props) {
+export default function GraphCanvas({ graph, onNodeMove, viewMode, masteryMode, masteryMap, studentProgress, onScoreSubmit }: Props) {
   return (
     <ReactFlowProvider>
       <div style={{ width: "100%", height: "100%", background: "#1a1a1a" }}>
@@ -435,6 +437,7 @@ export default function GraphCanvas({ graph, onNodeMove, viewMode, masteryMap, s
           graph={graph}
           onNodeMove={onNodeMove}
           viewMode={viewMode}
+          masteryMode={masteryMode}
           masteryMap={masteryMap}
           studentProgress={studentProgress}
           onScoreSubmit={onScoreSubmit}
