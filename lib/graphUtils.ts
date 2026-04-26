@@ -1,4 +1,4 @@
-import { GraphNode, GraphEdge, GraphState } from "./types";
+import { GraphNode, GraphEdge, GraphState, MasteryState, NodeProgress, StudentProgress } from "./types";
 
 export function assignPositions(
   nodes: GraphNode[],
@@ -195,4 +195,56 @@ export function executeTool(
     default:
       return { error: `Unknown tool: ${name}` };
   }
+}
+
+export function computeMasteryStates(
+  graph: GraphState,
+  progress: StudentProgress
+): Record<string, MasteryState> {
+  // Build map: nodeId → set of source node ids (prerequisites)
+  const prereqs = new Map<string, string[]>();
+  graph.nodes.forEach((n) => prereqs.set(n.id, []));
+  graph.edges.forEach((e) => {
+    prereqs.get(e.target)?.push(e.source);
+  });
+
+  const result: Record<string, MasteryState> = {};
+
+  const scoreMastered = new Set<string>();
+  graph.nodes.forEach((n) => {
+    const np = progress.nodeProgress[n.id];
+    if (np?.score !== undefined && np.score >= 80) {
+      scoreMastered.add(n.id);
+    }
+  });
+
+  graph.nodes.forEach((n) => {
+    const np = progress.nodeProgress[n.id];
+    const prereqList = prereqs.get(n.id) ?? [];
+    const allPrereqsMastered = prereqList.every((pid) => scoreMastered.has(pid));
+
+    if (!allPrereqsMastered) {
+      result[n.id] = 'locked';
+      return;
+    }
+
+    if (!np || np.score === undefined) {
+      result[n.id] = 'available';
+      return;
+    }
+
+    if (np.score >= 80) {
+      result[n.id] = 'mastered';
+      return;
+    }
+
+    if (np.attempts >= 3 && np.score < 50) {
+      result[n.id] = 'struggling';
+      return;
+    }
+
+    result[n.id] = 'in_progress';
+  });
+
+  return result;
 }
