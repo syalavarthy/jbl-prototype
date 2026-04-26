@@ -41,11 +41,28 @@ export type StreamEvent =
 
 export type MasteryState = 'locked' | 'available' | 'in_progress' | 'mastered' | 'struggling';
 
+export type MasteryMode = 'score' | 'bkt';
+
+export interface BKTParams {
+  pL0: number;
+  pT: number;
+  pG: number;
+  pS: number;
+}
+
+export interface AssessmentResponse {
+  timestamp: string;
+  correct: boolean;
+}
+
 export interface NodeProgress {
   nodeId: string;
   score?: number;
   assessedAt?: string;
   attempts: number;
+  params?: BKTParams;
+  responses?: AssessmentResponse[];
+  pMastery?: number;
 }
 
 export interface StudentProgress {

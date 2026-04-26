@@ -1,4 +1,4 @@
-import { GraphNode, GraphEdge, GraphState, MasteryState, NodeProgress, StudentProgress } from "./types";
+import { GraphNode, GraphEdge, GraphState, MasteryState, MasteryMode, NodeProgress, StudentProgress, AssessmentResponse, BKTParams } from "./types";
 
 export function assignPositions(
   nodes: GraphNode[],
@@ -197,11 +197,24 @@ export function executeTool(
   }
 }
 
+export function computeBKT(responses: AssessmentResponse[], params: BKTParams): number {
+  let pL = params.pL0;
+  for (const r of responses) {
+    if (r.correct) {
+      pL = (pL * (1 - params.pS)) / (pL * (1 - params.pS) + (1 - pL) * params.pG);
+    } else {
+      pL = (pL * params.pS) / (pL * params.pS + (1 - pL) * (1 - params.pG));
+    }
+    pL = pL + (1 - pL) * params.pT;
+  }
+  return pL;
+}
+
 export function computeMasteryStates(
   graph: GraphState,
-  progress: StudentProgress
+  progress: StudentProgress,
+  masteryMode: MasteryMode = 'score'
 ): Record<string, MasteryState> {
-  // Build map: nodeId → set of source node ids (prerequisites)
   const prereqs = new Map<string, string[]>();
   graph.nodes.forEach((n) => prereqs.set(n.id, []));
   graph.edges.forEach((e) => {
@@ -210,40 +223,57 @@ export function computeMasteryStates(
 
   const result: Record<string, MasteryState> = {};
 
-  const scoreMastered = new Set<string>();
+  // Build the set of nodes considered "mastered" for prerequisite unlock checks
+  const masteredSet = new Set<string>();
   graph.nodes.forEach((n) => {
     const np = progress.nodeProgress[n.id];
-    if (np?.score !== undefined && np.score >= 80) {
-      scoreMastered.add(n.id);
+    if (!np) return;
+    if (masteryMode === 'bkt') {
+      if ((np.pMastery ?? 0) >= 0.90) masteredSet.add(n.id);
+    } else {
+      if (np.score !== undefined && np.score >= 80) masteredSet.add(n.id);
     }
   });
 
   graph.nodes.forEach((n) => {
     const np = progress.nodeProgress[n.id];
     const prereqList = prereqs.get(n.id) ?? [];
-    const allPrereqsMastered = prereqList.every((pid) => scoreMastered.has(pid));
+    const allPrereqsMastered = prereqList.every((pid) => masteredSet.has(pid));
 
     if (!allPrereqsMastered) {
       result[n.id] = 'locked';
       return;
     }
 
-    if (!np || np.score === undefined) {
-      result[n.id] = 'available';
-      return;
+    if (masteryMode === 'bkt') {
+      if (!np || np.pMastery === undefined) {
+        result[n.id] = 'available';
+        return;
+      }
+      if (np.pMastery >= 0.90) {
+        result[n.id] = 'mastered';
+        return;
+      }
+      if (np.attempts >= 3 && np.pMastery < 0.40) {
+        result[n.id] = 'struggling';
+        return;
+      }
+      result[n.id] = 'in_progress';
+    } else {
+      if (!np || np.score === undefined) {
+        result[n.id] = 'available';
+        return;
+      }
+      if (np.score >= 80) {
+        result[n.id] = 'mastered';
+        return;
+      }
+      if (np.attempts >= 3 && np.score < 50) {
+        result[n.id] = 'struggling';
+        return;
+      }
+      result[n.id] = 'in_progress';
     }
-
-    if (np.score >= 80) {
-      result[n.id] = 'mastered';
-      return;
-    }
-
-    if (np.attempts >= 3 && np.score < 50) {
-      result[n.id] = 'struggling';
-      return;
-    }
-
-    result[n.id] = 'in_progress';
   });
 
   return result;

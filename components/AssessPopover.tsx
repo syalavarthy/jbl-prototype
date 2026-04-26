@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { GraphNode, MasteryState, NodeProgress } from "@/lib/types";
+import { GraphNode, MasteryMode, MasteryState, NodeProgress } from "@/lib/types";
 
 interface Props {
   node: GraphNode;
   progress: NodeProgress | undefined;
   masteryState: MasteryState;
+  masteryMode: MasteryMode;
   borderColor: string;
   textColor: string;
   onSubmit: (score: number) => void;
@@ -17,6 +18,7 @@ export default function AssessPopover({
   node,
   progress,
   masteryState,
+  masteryMode,
   borderColor,
   textColor,
   onSubmit,
@@ -79,15 +81,35 @@ export default function AssessPopover({
       </p>
 
       {/* State + attempts */}
-      <p style={{ color: "#555", fontSize: "9px", marginBottom: hasScore ? "2px" : "8px" }}>
+      <p style={{ color: "#555", fontSize: "9px", marginBottom: "4px" }}>
         state: {stateLabel} · att: {progress?.attempts ?? 0}
       </p>
 
-      {/* Last score + date */}
-      {hasScore && (
+      {/* BKT probability bar or last score */}
+      {masteryMode === 'bkt' && progress?.pMastery !== undefined ? (
+        <div style={{ marginBottom: "8px" }}>
+          <p style={{ color: "#888", fontSize: "9px", marginBottom: "3px" }}>mastery probability</p>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <div style={{ flex: 1, height: "4px", background: "#2a2a2a", borderRadius: "2px" }}>
+              <div style={{
+                width: `${Math.round(progress.pMastery * 100)}%`,
+                height: "100%",
+                background: textColor,
+                borderRadius: "2px",
+                transition: "width 0.3s ease",
+              }} />
+            </div>
+            <span style={{ color: textColor, fontSize: "9px", minWidth: "28px" }}>
+              {Math.round(progress.pMastery * 100)}%
+            </span>
+          </div>
+        </div>
+      ) : hasScore ? (
         <p style={{ color: "#555", fontSize: "9px", marginBottom: "8px" }}>
           last score: {progress!.score}{lastDate ? ` · ${lastDate}` : ""}
         </p>
+      ) : (
+        <div style={{ marginBottom: "8px" }} />
       )}
 
       <div style={{ borderTop: "1px solid #1e1e1e", paddingTop: "8px" }}>
