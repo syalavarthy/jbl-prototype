@@ -1,23 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ChatMessage, GraphState } from "@/lib/types";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChatMessage, GraphState, MasteryState, NodeProgress, StudentProgress } from "@/lib/types";
 import GraphCanvas from "@/components/GraphCanvas";
 import ChatPanel from "@/components/ChatPanel";
 import UploadPanel from "@/components/UploadPanel";
+import { computeMasteryStates } from "@/lib/graphUtils";
 
 const STORAGE_KEYS = {
   graph: "kg_graph",
   messages: "kg_messages",
   documentText: "kg_doc_text",
   initialized: "kg_initialized",
+  students: "kg_students",
 } as const;
+
+const DEFAULT_STUDENT: StudentProgress = {
+  studentId: "demo",
+  studentName: "Demo Student",
+  nodeProgress: {},
+};
 
 export default function Home() {
   const [graph, setGraph] = useState<GraphState>({ nodes: [], edges: [] });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [documentText, setDocumentText] = useState("");
   const [initialized, setInitialized] = useState(false);
+  const [viewMode, setViewMode] = useState<'edit' | 'progress'>('edit');
+  const [studentProgress, setStudentProgress] = useState<StudentProgress>(DEFAULT_STUDENT);
+
+  const masteryMap = useMemo(
+    () => computeMasteryStates(graph, studentProgress),
+    [graph, studentProgress]
+  );
 
   // Restore session from localStorage on mount
   useEffect(() => {
@@ -29,6 +44,8 @@ export default function Home() {
       if (storedGraph) setGraph(JSON.parse(storedGraph) as GraphState);
       if (storedMessages) setMessages(JSON.parse(storedMessages) as ChatMessage[]);
       if (storedDocText) setDocumentText(storedDocText);
+      const storedStudents = localStorage.getItem(STORAGE_KEYS.students);
+      if (storedStudents) setStudentProgress(JSON.parse(storedStudents) as StudentProgress);
       setInitialized(true);
     }
   }, []);
@@ -40,8 +57,9 @@ export default function Home() {
       localStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(messages));
       localStorage.setItem(STORAGE_KEYS.documentText, documentText);
       localStorage.setItem(STORAGE_KEYS.initialized, "true");
+      localStorage.setItem(STORAGE_KEYS.students, JSON.stringify(studentProgress));
     }
-  }, [graph, messages, documentText, initialized]);
+  }, [graph, messages, documentText, initialized, studentProgress]);
 
   const handleNodeMove = (id: string, x: number, y: number) => {
     setGraph((prev) => ({
@@ -51,6 +69,28 @@ export default function Home() {
       ),
     }));
   };
+
+  const handleScoreSubmit = useCallback((nodeId: string, score: number) => {
+    setStudentProgress((prev) => {
+      const existing = prev.nodeProgress[nodeId];
+      return {
+        ...prev,
+        nodeProgress: {
+          ...prev.nodeProgress,
+          [nodeId]: {
+            nodeId,
+            score,
+            assessedAt: new Date().toISOString(),
+            attempts: (existing?.attempts ?? 0) + 1,
+          },
+        },
+      };
+    });
+  }, []);
+
+  const handleViewModeToggle = useCallback(() => {
+    setViewMode((m) => (m === 'edit' ? 'progress' : 'edit'));
+  }, []);
 
   const handleGraphGenerated = (newGraph: GraphState, text: string) => {
     setGraph(newGraph);
@@ -64,6 +104,9 @@ export default function Home() {
     setMessages([]);
     setDocumentText("");
     setInitialized(false);
+    localStorage.removeItem(STORAGE_KEYS.students);
+    setStudentProgress(DEFAULT_STUDENT);
+    setViewMode('edit');
   };
 
   return (
@@ -76,12 +119,25 @@ export default function Home() {
           </h1>
           <p className="text-xs text-[#555]">knowledge graph generator + editor</p>
         </div>
-        <button
-          onClick={handleReset}
-          className="text-xs text-[#555] hover:text-[#e05252] border border-[#2a2a2a] hover:border-[#e05252] rounded px-3 py-1.5 transition-colors"
-        >
-          reset session
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <button
+            onClick={handleViewModeToggle}
+            className="text-xs border rounded px-3 py-1.5 transition-colors"
+            style={
+              viewMode === 'progress'
+                ? { color: "#4dd4d4", borderColor: "#2ab8b8" }
+                : { color: "#555", borderColor: "#2a2a2a" }
+            }
+          >
+            {viewMode === 'edit' ? 'progress view' : 'edit view'}
+          </button>
+          <button
+            onClick={handleReset}
+            className="text-xs text-[#555] hover:text-[#e05252] border border-[#2a2a2a] hover:border-[#e05252] rounded px-3 py-1.5 transition-colors"
+          >
+            reset session
+          </button>
+        </div>
       </header>
 
       {/* Body */}
@@ -91,7 +147,14 @@ export default function Home() {
         <div className="flex flex-1 overflow-hidden">
           {/* Graph canvas — left half */}
           <div className="w-1/2 border-r border-[#2a2a2a]">
-            <GraphCanvas graph={graph} onNodeMove={handleNodeMove} />
+            <GraphCanvas
+              graph={graph}
+              onNodeMove={handleNodeMove}
+              viewMode={viewMode}
+              masteryMap={masteryMap}
+              studentProgress={studentProgress}
+              onScoreSubmit={handleScoreSubmit}
+            />
           </div>
 
           {/* Chat panel — right half */}
