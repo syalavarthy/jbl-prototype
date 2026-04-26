@@ -2,3 +2,5 @@
 node_modules/
 .next/
 Unit Flow.docx
+.DS_Store
+.worktrees/
