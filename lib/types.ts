@@ -38,3 +38,18 @@ export type StreamEvent =
   | { type: "tool_call"; name: string; result: string; isError: boolean }
   | { type: "graph_update"; graph: GraphState }
   | { type: "done" };
+
+export type MasteryState = 'locked' | 'available' | 'in_progress' | 'mastered' | 'struggling';
+
+export interface NodeProgress {
+  nodeId: string;
+  score?: number;
+  assessedAt?: string;
+  attempts: number;
+}
+
+export interface StudentProgress {
+  studentId: string;
+  studentName: string;
+  nodeProgress: Record<string, NodeProgress>;
+}
