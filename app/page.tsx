@@ -116,6 +116,14 @@ export default function Home() {
     setInitialized(true);
   };
 
+  const handleResetProgress = useCallback(() => {
+    setStudentProgress(DEFAULT_STUDENT);
+    setMasteryMode('score');
+    if (initialized) {
+      localStorage.setItem(STORAGE_KEYS.students, JSON.stringify(DEFAULT_STUDENT));
+    }
+  }, [initialized]);
+
   const handleReset = () => {
     Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
     setGraph({ nodes: [], edges: [] });
@@ -146,10 +154,10 @@ export default function Home() {
               style={
                 masteryMode === 'bkt'
                   ? { color: "#a78bfa", borderColor: "#7c3aed" }
-                  : { color: "#555", borderColor: "#2a2a2a" }
+                  : { color: "#4dd4d4", borderColor: "#2ab8b8" }
               }
             >
-              {masteryMode === 'score' ? 'bkt mode' : 'score mode'}
+              {masteryMode === 'score' ? 'score mode' : 'bkt mode'}
             </button>
           )}
           <button
@@ -161,8 +169,16 @@ export default function Home() {
                 : { color: "#555", borderColor: "#2a2a2a" }
             }
           >
-            {viewMode === 'edit' ? 'progress view' : 'edit view'}
+            {viewMode === 'edit' ? 'edit view' : 'progress view'}
           </button>
+          {viewMode === 'progress' && (
+            <button
+              onClick={handleResetProgress}
+              className="text-xs text-[#555] hover:text-[#f97316] border border-[#2a2a2a] hover:border-[#f97316] rounded px-3 py-1.5 transition-colors"
+            >
+              reset progress
+            </button>
+          )}
           <button
             onClick={handleReset}
             className="text-xs text-[#555] hover:text-[#e05252] border border-[#2a2a2a] hover:border-[#e05252] rounded px-3 py-1.5 transition-colors"
