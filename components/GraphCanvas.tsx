@@ -38,6 +38,7 @@ interface NodeData {
   viewMode: 'edit' | 'progress';
   masteryState?: MasteryState;
   isFrontier?: boolean;
+  onNodeClick?: (nodeId: string, rect: DOMRect) => void;
 }
 
 interface TopicColor {
@@ -113,7 +114,7 @@ function getMasteryStyles(
 }
 
 function CustomNode({ data }: NodeProps<NodeData>) {
-  const { color, viewMode, masteryState, isFrontier } = data;
+  const { color, viewMode, masteryState, isFrontier, onNodeClick } = data;
 
   const nodeStyle: React.CSSProperties =
     viewMode === 'progress' && masteryState
@@ -144,7 +145,15 @@ function CustomNode({ data }: NodeProps<NodeData>) {
     : color.border;
 
   return (
-    <div className="relative group">
+    <div
+      className="relative group"
+      onClick={(e) => {
+        if (viewMode === 'progress' && onNodeClick) {
+          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          onNodeClick(data.nodeId, rect);
+        }
+      }}
+    >
       <Handle
         type="target"
         position={Position.Top}
@@ -235,7 +244,8 @@ function toRFNodes(
   graph: GraphState,
   colorMap: Map<string, TopicColor>,
   viewMode: 'edit' | 'progress',
-  masteryMap: Record<string, MasteryState>
+  masteryMap: Record<string, MasteryState>,
+  onNodeClick?: (nodeId: string, rect: DOMRect) => void
 ): Node<NodeData>[] {
   const prereqs = new Map<string, string[]>();
   graph.nodes.forEach((n) => prereqs.set(n.id, []));
@@ -259,6 +269,7 @@ function toRFNodes(
         viewMode,
         masteryState,
         isFrontier,
+        onNodeClick,
       },
       position: n.position ?? { x: 0, y: 0 },
       type: "custom",
@@ -305,9 +316,31 @@ function GraphCanvasInner({ graph, onNodeMove, viewMode, masteryMap, studentProg
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [popoverPos, setPopoverPos] = useState<{ x: number; y: number } | null>(null);
 
+  const handleDragStop: NodeDragHandler = useCallback((_event, node) => {
+    onNodeMove(node.id, node.position.x, node.position.y);
+  }, [onNodeMove]);
+
+  const handleNodeClick = useCallback(
+    (nodeId: string, rect: DOMRect) => {
+      if (activeNodeId === nodeId) {
+        setActiveNodeId(null);
+        setPopoverPos(null);
+      } else {
+        const wrapperEl = document.querySelector('.react-flow__renderer') as HTMLElement | null;
+        const wrapperRect = wrapperEl?.getBoundingClientRect() ?? { left: 0, top: 0 };
+        setActiveNodeId(nodeId);
+        setPopoverPos({
+          x: rect.left - wrapperRect.left + rect.width + 4,
+          y: rect.top - wrapperRect.top - 10,
+        });
+      }
+    },
+    [activeNodeId]
+  );
+
   useEffect(() => {
-    setNodes(toRFNodes(graph, colorMap, viewMode, masteryMap));
-  }, [graph.nodes, graph.edges, colorMap, viewMode, masteryMap, setNodes]); // eslint-disable-line react-hooks/exhaustive-deps
+    setNodes(toRFNodes(graph, colorMap, viewMode, masteryMap, handleNodeClick));
+  }, [graph.nodes, graph.edges, colorMap, viewMode, masteryMap, setNodes, handleNodeClick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setEdges(toRFEdges(graph, viewMode, masteryMap, colorMap));
@@ -319,31 +352,6 @@ function GraphCanvasInner({ graph, onNodeMove, viewMode, masteryMap, studentProg
       setPopoverPos(null);
     }
   }, [viewMode]);
-
-  const handleDragStop: NodeDragHandler = (_event, node) => {
-    onNodeMove(node.id, node.position.x, node.position.y);
-  };
-
-  const handleNodeClick = useCallback(
-    (event: React.MouseEvent, node: Node<NodeData>) => {
-      if (viewMode !== 'progress') return;
-      if (activeNodeId === node.id) {
-        setActiveNodeId(null);
-        setPopoverPos(null);
-      } else {
-        const wrapperEl = (event.currentTarget as HTMLElement).closest('.react-flow__renderer') as HTMLElement | null;
-        const nodeEl = event.currentTarget as HTMLElement;
-        const wrapperRect = wrapperEl?.getBoundingClientRect() ?? { left: 0, top: 0 };
-        const nodeRect = nodeEl.getBoundingClientRect();
-        setActiveNodeId(node.id);
-        setPopoverPos({
-          x: nodeRect.left - wrapperRect.left + nodeRect.width,
-          y: nodeRect.top - wrapperRect.top - 10,
-        });
-      }
-    },
-    [viewMode, activeNodeId]
-  );
 
   const handlePopoverSubmit = useCallback(
     (score: number) => onScoreSubmit(activeNodeId!, score),
@@ -381,7 +389,6 @@ function GraphCanvasInner({ graph, onNodeMove, viewMode, masteryMap, studentProg
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeDragStop={handleDragStop}
-        onNodeClick={handleNodeClick}
         fitView
         nodesConnectable={false}
         elementsSelectable={false}
