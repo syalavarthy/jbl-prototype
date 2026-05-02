@@ -1,63 +1,110 @@
 import { getAnthropicClient } from "@/lib/anthropic";
 import { assignPositions } from "@/lib/graphUtils";
-import { GraphState } from "@/lib/types";
+import { GraphState, SeedSuggestions } from "@/lib/types";
 
-const GENERATE_PROMPT = `You are a curriculum knowledge graph builder. Your job is to extract ONLY the learnable concepts (these may be related to any educational subject like math, physics, chemistry, economics etc.) from a curriculum document and arrange them as a Directed Acyclic Graph (DAG) representing the sequence in which a student must learn them.
+type NodeDifficulty = 'foundational' | 'standard' | 'challenging';
+
+const DIFFICULTY_SEEDS: Record<NodeDifficulty, number> = {
+  foundational: 1,
+  standard: 2,
+  challenging: 4,
+};
+
+const GENERATE_PROMPT = `You are a curriculum knowledge graph builder. Extract learnable concepts from a curriculum document and arrange them as a DAG. Also emit edge confidence scores, node difficulty hints, and agentic suggestions.
 
 WHAT TO EXTRACT:
-- Only include concepts that a student can actually learn, practise, and be tested on
-- Prior knowledge concepts listed in the document should be included as foundational nodes with no incoming edges
-- Follow the concept sequencing order explicitly described in the document (e.g. Week 1 → Week 2 → Week 3)
-- Each node must represent one specific learnable concept, not a container, category, phase, or administrative unit
+- Only include concepts a student can learn, practise, and be tested on
+- Prior knowledge concepts are roots (no incoming edges)
+- Follow explicit concept sequencing in the document
 
-WHAT TO IGNORE — do not create nodes for any of the following:
-- Planning or administrative structures (unit plans, annual plans, board requirements, lesson plans)
-- Time periods or phases (Week 1, Term 2, Foundation phase)
-- Assessment types (unit test, exit ticket, formative assessment, worksheet)
-- Teaching activities or methods (guided practice, mixed practice, revision, teacher reflection)
-- Pedagogy structures (engagement hook, concept introduction, closure)
+WHAT TO IGNORE — no nodes for:
+- Administrative structures (unit plans, lesson plans, board requirements)
+- Time periods or phases (Week 1, Term 2)
+- Assessment types (unit test, worksheet)
+- Teaching activities (guided practice, revision)
 
-NODE STRUCTURE:
-Every node represents a single learnable concept and has a topic attribute for grouping.
-For this document, the topic for all nodes is "Fractions".
+Return a single JSON object with this exact shape:
 
 {
   "nodes": [
     {
-      "id": "string",          // readable slug e.g. "understanding-lcm"
-      "label": "string",       // short concept name e.g. "Understanding LCM"
-      "topic": "string",       // the subject area this concept belongs to e.g. "Fractions"
-      "description": "string"  // one sentence: what the student will be able to do
+      "id": "string",           // readable slug e.g. "understanding-lcm"
+      "label": "string",        // short concept name e.g. "Understanding LCM"
+      "topic": "string",        // subject area e.g. "Fractions"
+      "description": "string",  // one sentence: what the student will be able to do
+      "difficulty": "foundational" | "standard" | "challenging"
     }
   ],
   "edges": [
     {
-      "id": "string",          // e.g. "understanding-lcm->convert-to-common-denominator"
-      "source": "string",      // id of the prerequisite concept
-      "target": "string",      // id of the concept that depends on it
-      "label": "prerequisite"
+      "id": "string",           // e.g. "understanding-lcm->convert-to-common-denominator"
+      "source": "string",
+      "target": "string",
+      "label": "prerequisite",
+      "confidence": 0.0         // 0.0–1.0: 1.0=stated directly, 0.5=implied, 0.3=inferred
     }
-  ]
+  ],
+  "suggestions": {
+    "bridgeSuggestions": [
+      {
+        "id": "string",
+        "type": "bridge_node",
+        "label": "string",
+        "sourceNodeId": "string",
+        "targetNodeId": "string",
+        "reason": "string"
+      }
+    ],
+    "edgeSuggestions": [
+      {
+        "id": "string",
+        "type": "missing_edge",
+        "sourceNodeId": "string",
+        "targetNodeId": "string",
+        "reason": "string"
+      }
+    ]
+  }
 }
 
-DAG RULES — the graph must be a valid Directed Acyclic Graph:
-- Edges are directed from prerequisite to dependent (source is learned before target)
-- No cycles — a concept cannot be a prerequisite of its own ancestor
-- A concept can have multiple prerequisites (multiple incoming edges)
-- A concept can be prerequisite to multiple concepts (multiple outgoing edges)
-- Prior knowledge nodes from the document have no incoming edges — they are roots of the graph
+Include 1–2 bridge suggestions and exactly 1 missing edge suggestion based on the graph structure.
+
+DAG RULES:
+- Edges directed from prerequisite to dependent
+- No cycles
 
 Return ONLY valid JSON. No explanation, no markdown, no backticks.
 
 Curriculum document:
 `;
 
-export async function POST(request: Request): Promise<Response> {
-  const body = await request.json() as {
-    text: string;
-    subject?: string;
-    grade?: string;
+interface LLMNode {
+  id: string;
+  label: string;
+  topic: string;
+  description?: string;
+  difficulty?: NodeDifficulty;
+}
+
+interface LLMEdge {
+  id: string;
+  source: string;
+  target: string;
+  label?: string;
+  confidence?: number;
+}
+
+interface LLMResponse {
+  nodes: LLMNode[];
+  edges: LLMEdge[];
+  suggestions: {
+    bridgeSuggestions: SeedSuggestions['bridgeSuggestions'];
+    edgeSuggestions: SeedSuggestions['edgeSuggestions'];
   };
+}
+
+export async function POST(request: Request): Promise<Response> {
+  const body = await request.json() as { text: string };
 
   if (!body.text) {
     return Response.json({ error: "No document text provided" }, { status: 400 });
@@ -68,15 +115,10 @@ export async function POST(request: Request): Promise<Response> {
   let message;
   try {
     message = await anthropic.messages.create({
-    model: "claude-sonnet-4-5",
-    max_tokens: 8192,
-    messages: [
-      {
-        role: "user",
-        content: GENERATE_PROMPT + body.text,
-      },
-    ],
-  });
+      model: "claude-sonnet-4-6",
+      max_tokens: 8192,
+      messages: [{ role: "user", content: GENERATE_PROMPT + body.text }],
+    });
   } catch (err) {
     console.error("[/api/generate]", err);
     const msg = err instanceof Error ? err.message : "Claude API error";
@@ -88,18 +130,36 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "No text response from Claude" }, { status: 500 });
   }
 
-  let rawText = textBlock.text;
-  // Strip markdown fences and any leading text before the JSON object
-  rawText = rawText.replace(/```json\n?|\n?```/g, "").trim();
+  let rawText = textBlock.text.replace(/\`\`\`json\n?|\n?\`\`\`/g, "").trim();
   const jsonStart = rawText.indexOf("{");
   if (jsonStart === -1) {
     return Response.json({ error: "Could not parse graph JSON from response" }, { status: 500 });
   }
-  console.log(`json response: ${rawText}`)
   rawText = rawText.slice(jsonStart);
 
-  const parsed = JSON.parse(rawText) as GraphState;
-  const nodesWithPositions = assignPositions(parsed.nodes, parsed.edges);
+  const llmResponse = JSON.parse(rawText) as LLMResponse;
 
-  return Response.json({ graph: { nodes: nodesWithPositions, edges: parsed.edges } });
+  // Strip difficulty from nodes — ephemeral, not stored in GraphNode
+  const graphNodes = llmResponse.nodes.map(({ difficulty: _d, ...rest }) => rest);
+  const nodesWithPositions = assignPositions(graphNodes, llmResponse.edges);
+
+  const graph: GraphState = {
+    nodes: nodesWithPositions,
+    edges: llmResponse.edges,
+  };
+
+  // Compute velocity seeds from difficulty
+  const nodeVelocitySeeds: Record<string, number> = {};
+  llmResponse.nodes.forEach((n) => {
+    if (n.difficulty) {
+      nodeVelocitySeeds[n.id] = DIFFICULTY_SEEDS[n.difficulty];
+    }
+  });
+
+  const suggestions: SeedSuggestions = {
+    bridgeSuggestions: llmResponse.suggestions?.bridgeSuggestions ?? [],
+    edgeSuggestions: llmResponse.suggestions?.edgeSuggestions ?? [],
+  };
+
+  return Response.json({ graph, suggestions, nodeVelocitySeeds });
 }
