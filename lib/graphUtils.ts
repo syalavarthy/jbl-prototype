@@ -1,4 +1,4 @@
-import { GraphNode, GraphEdge, GraphState, MasteryState, MasteryMode, NodeProgress, StudentProgress, AssessmentResponse, BKTParams } from "./types";
+import { GraphNode, GraphEdge, GraphState, MasteryState, MasteryMode, NodeProgress, StudentProgress, AssessmentResponse, BKTParams, GradeBand, NodeDisplayData, EdgeDisplayData, GraphDisplayModel, SeedSuggestions, Suggestion, SuggestionNodeDisplay, SuggestionEdgeDisplay } from "./types";
 
 export function assignPositions(
   nodes: GraphNode[],
@@ -277,4 +277,112 @@ export function computeMasteryStates(
   });
 
   return result;
+}
+
+const FILL_PCT: Record<GradeBand, number> = {
+  not_started: 0,
+  developing: 22,
+  progressing: 55,
+  proficient: 82,
+  mastered: 100,
+  struggling: 22,
+};
+
+function deriveBorderThickness(attempts: number): number {
+  if (attempts <= 1) return 1;
+  if (attempts <= 3) return 1.5;
+  if (attempts <= 5) return 2;
+  return 2.5;
+}
+
+function deriveGradeBand(np: NodeProgress | undefined): GradeBand {
+  if (!np || np.attempts === 0) return 'not_started';
+  const pMastery = np.pMastery ?? 0;
+  if (np.attempts >= 3 && pMastery < 0.40) return 'struggling';
+  if (pMastery >= 0.90) return 'mastered';
+  if (pMastery >= 0.70) return 'proficient';
+  if (pMastery >= 0.45) return 'progressing';
+  return 'developing';
+}
+
+export function computeGraphDisplay(
+  graph: GraphState,
+  studentProgress: StudentProgress,
+  masteryMode: MasteryMode,
+  showSuggestions: boolean,
+  suggestions: SeedSuggestions
+): GraphDisplayModel {
+  const masteryStates = computeMasteryStates(graph, studentProgress, masteryMode);
+
+  const nodeDisplays: Record<string, NodeDisplayData> = {};
+  graph.nodes.forEach((n) => {
+    const np = studentProgress.nodeProgress[n.id];
+    const pMastery = np?.pMastery ?? 0;
+    const attempts = np?.attempts ?? 0;
+    const gradeBand = deriveGradeBand(np);
+    nodeDisplays[n.id] = {
+      masteryState: masteryStates[n.id],
+      gradeBand,
+      fillPct: FILL_PCT[gradeBand],
+      pMastery,
+      labelOpacity: Math.max(0.35, pMastery * 0.7 + 0.28),
+      learningVelocity: attempts,
+      borderThicknessPx: deriveBorderThickness(attempts),
+    };
+  });
+
+  const edgeDisplays: Record<string, EdgeDisplayData> = {};
+  graph.edges.forEach((e) => {
+    const confidence = e.confidence ?? 0.5;
+    edgeDisplays[e.id] = {
+      confidence,
+      isDashed: confidence < 0.5,
+      confidenceLabel: confidence.toFixed(1),
+    };
+  });
+
+  const suggestionNodeDisplays: SuggestionNodeDisplay[] = [];
+  const suggestionEdgeDisplays: SuggestionEdgeDisplay[] = [];
+  const activeSuggestions: Suggestion[] = [];
+
+  if (showSuggestions) {
+    suggestions.bridgeSuggestions.forEach((s) => {
+      const src = graph.nodes.find((n) => n.id === s.sourceNodeId);
+      const tgt = graph.nodes.find((n) => n.id === s.targetNodeId);
+      if (!src?.position || !tgt?.position) return;
+      activeSuggestions.push(s);
+      suggestionNodeDisplays.push({
+        isSuggestion: true,
+        suggestionId: s.id,
+        label: s.label,
+        position: {
+          x: (src.position.x + tgt.position.x) / 2,
+          y: (src.position.y + tgt.position.y) / 2,
+        },
+      });
+      suggestionEdgeDisplays.push(
+        { isSuggestion: true, suggestionId: s.id, sourceNodeId: s.sourceNodeId, targetNodeId: s.id },
+        { isSuggestion: true, suggestionId: s.id, sourceNodeId: s.id, targetNodeId: s.targetNodeId }
+      );
+    });
+
+    suggestions.edgeSuggestions.forEach((s) => {
+      activeSuggestions.push(s);
+      suggestionEdgeDisplays.push({
+        isSuggestion: true,
+        suggestionId: s.id,
+        sourceNodeId: s.sourceNodeId,
+        targetNodeId: s.targetNodeId,
+      });
+    });
+  }
+
+  return { nodeDisplays, edgeDisplays, suggestionNodeDisplays, suggestionEdgeDisplays, suggestions: activeSuggestions };
+}
+
+export function removeSuggestion(prev: SeedSuggestions, id: string): SeedSuggestions {
+  return {
+    bridgeSuggestions: prev.bridgeSuggestions.filter((s) => s.id !== id),
+    edgeSuggestions: prev.edgeSuggestions.filter((s) => s.id !== id),
+  };
 }
