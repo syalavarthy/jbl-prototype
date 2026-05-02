@@ -89,6 +89,36 @@ describe('computeGraphDisplay node grade bands', () => {
     const r = computeGraphDisplay(singleNodeGraph, progress, 'bkt', false, emptySeeds)
     expect(r.nodeDisplays['a'].gradeBand).not.toBe('struggling')
   })
+
+  it('boundary: pMastery exactly 0.45 → progressing (not developing)', () => {
+    const progress = { ...emptyProgress, nodeProgress: { a: { nodeId: 'a', attempts: 1, pMastery: 0.45 } } }
+    const r = computeGraphDisplay(singleNodeGraph, progress, 'bkt', false, emptySeeds)
+    expect(r.nodeDisplays['a'].gradeBand).toBe('progressing')
+  })
+
+  it('boundary: pMastery 0.44 → developing (just below progressing)', () => {
+    const progress = { ...emptyProgress, nodeProgress: { a: { nodeId: 'a', attempts: 1, pMastery: 0.44 } } }
+    const r = computeGraphDisplay(singleNodeGraph, progress, 'bkt', false, emptySeeds)
+    expect(r.nodeDisplays['a'].gradeBand).toBe('developing')
+  })
+
+  it('boundary: pMastery exactly 0.70 → proficient (not progressing)', () => {
+    const progress = { ...emptyProgress, nodeProgress: { a: { nodeId: 'a', attempts: 1, pMastery: 0.70 } } }
+    const r = computeGraphDisplay(singleNodeGraph, progress, 'bkt', false, emptySeeds)
+    expect(r.nodeDisplays['a'].gradeBand).toBe('proficient')
+  })
+
+  it('boundary: pMastery 0.69 → progressing (just below proficient)', () => {
+    const progress = { ...emptyProgress, nodeProgress: { a: { nodeId: 'a', attempts: 1, pMastery: 0.69 } } }
+    const r = computeGraphDisplay(singleNodeGraph, progress, 'bkt', false, emptySeeds)
+    expect(r.nodeDisplays['a'].gradeBand).toBe('progressing')
+  })
+
+  it('returns empty nodeDisplays and edgeDisplays for an empty graph', () => {
+    const r = computeGraphDisplay(emptyGraph, emptyProgress, 'bkt', false, emptySeeds)
+    expect(r.nodeDisplays).toEqual({})
+    expect(r.edgeDisplays).toEqual({})
+  })
 })
 
 // ─── computeGraphDisplay — node display derivations ─────────────────────────
@@ -258,5 +288,19 @@ describe('removeSuggestion', () => {
     const r = removeSuggestion(seeds, 'e1')
     expect(r.bridgeSuggestions).toHaveLength(1)
     expect(r.edgeSuggestions).toHaveLength(0)
+  })
+
+  it('is a no-op when id does not exist in either list', () => {
+    const seeds: SeedSuggestions = {
+      bridgeSuggestions: [
+        { id: 'b1', type: 'bridge_node', label: 'X', targetNodeId: 't', sourceNodeId: 's', reason: '' },
+      ],
+      edgeSuggestions: [
+        { id: 'e1', type: 'missing_edge', sourceNodeId: 's', targetNodeId: 't', reason: '' },
+      ],
+    }
+    const r = removeSuggestion(seeds, 'does-not-exist')
+    expect(r.bridgeSuggestions).toHaveLength(1)
+    expect(r.edgeSuggestions).toHaveLength(1)
   })
 })
