@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { GraphNode, MasteryMode, MasteryState, NodeProgress } from "@/lib/types";
+import { GraphNode, MasteryState, NodeProgress } from "@/lib/types";
 
 interface Props {
   node: GraphNode;
   progress: NodeProgress | undefined;
   masteryState: MasteryState;
-  masteryMode: MasteryMode;
   borderColor: string;
   textColor: string;
   onSubmit: (score: number) => void;
@@ -18,7 +17,6 @@ export default function AssessPopover({
   node,
   progress,
   masteryState,
-  masteryMode,
   borderColor,
   textColor,
   onSubmit,
@@ -26,6 +24,11 @@ export default function AssessPopover({
 }: Props) {
   const [inputValue, setInputValue] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
   // Dismiss on click outside
   useEffect(() => {
@@ -51,7 +54,8 @@ export default function AssessPopover({
     const score = parseInt(inputValue, 10);
     if (isNaN(score) || score < 0 || score > 100) return;
     onSubmit(score);
-    onClose();
+    setInputValue("");
+    inputRef.current?.focus();
   }
 
   const stateLabel = masteryState.replaceAll("_", " ");
@@ -85,8 +89,8 @@ export default function AssessPopover({
         state: {stateLabel} · att: {progress?.attempts ?? 0}
       </p>
 
-      {/* BKT probability bar or last score */}
-      {masteryMode === 'bkt' && progress?.pMastery !== undefined ? (
+      {/* BKT probability bar */}
+      {progress?.pMastery !== undefined ? (
         <div style={{ marginBottom: "8px" }}>
           <p style={{ color: "#888", fontSize: "9px", marginBottom: "3px" }}>mastery probability</p>
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -104,10 +108,6 @@ export default function AssessPopover({
             </span>
           </div>
         </div>
-      ) : hasScore ? (
-        <p style={{ color: "#555", fontSize: "9px", marginBottom: "8px" }}>
-          last score: {progress!.score}{lastDate ? ` · ${lastDate}` : ""}
-        </p>
       ) : (
         <div style={{ marginBottom: "8px" }} />
       )}
@@ -122,13 +122,13 @@ export default function AssessPopover({
             </p>
             <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
               <input
+                ref={inputRef}
                 type="number"
                 min={0}
                 max={100}
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                autoFocus
                 style={{
                   flex: 1,
                   background: "#141414",

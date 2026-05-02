@@ -7,6 +7,7 @@ export interface ConfidenceEdgeData {
   isDashed: boolean;
   confidenceLabel: string;
   edgeColor: string;
+  delta?: "up" | "down" | null;
 }
 
 export default function ConfidenceEdge({
@@ -31,6 +32,7 @@ export default function ConfidenceEdge({
   });
 
   const strokeColor = data?.edgeColor ?? "#2a2a2a";
+  const delta = data?.delta ?? null;
 
   return (
     <>
@@ -50,15 +52,21 @@ export default function ConfidenceEdge({
             style={{
               position: "absolute",
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              display: "flex",
+              alignItems: "center",
+              gap: "2px",
               fontSize: 8,
               fontFamily: "monospace",
-              color: "#444",
+              color: delta === "up" ? "#4ade80" : delta === "down" ? "#f87171" : "#888",
               pointerEvents: "none",
               userSelect: "none",
+              transition: "color 0.3s ease",
             }}
             className="nodrag nopan"
           >
             {data.confidenceLabel}
+            {delta === "up" && <span style={{ fontSize: 7 }}>↑</span>}
+            {delta === "down" && <span style={{ fontSize: 7 }}>↓</span>}
           </div>
         </EdgeLabelRenderer>
       )}

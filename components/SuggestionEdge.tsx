@@ -61,6 +61,7 @@ export default function SuggestionEdge({
             style={{
               position: "absolute",
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              pointerEvents: "all",
               fontSize: "9px",
               fontFamily: "monospace",
               color: "#f0b429",

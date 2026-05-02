@@ -90,6 +90,10 @@ export const tools: Anthropic.Tool[] = [
           type: "string",
           description: "Optional relationship label, defaults to 'prerequisite'",
         },
+        confidence: {
+          type: "number",
+          description: "Initial confidence in the prerequisite relationship (0.0–1.0). Use 0.5 for uncertain connections, higher values for well-established prerequisites. Edges below 0.5 render dashed.",
+        },
       },
       required: ["source_id", "target_id"],
     },
@@ -108,15 +112,19 @@ export const tools: Anthropic.Tool[] = [
   },
   {
     name: "update_edge",
-    description: "Update the label of an existing edge.",
+    description: "Update the label and/or confidence of an existing edge.",
     input_schema: {
       type: "object",
       properties: {
         source_id: { type: "string" },
         target_id: { type: "string" },
-        label: { type: "string" },
+        label: { type: "string", description: "New relationship label" },
+        confidence: {
+          type: "number",
+          description: "New confidence value (0.0–1.0). Edges below 0.5 render dashed to indicate a weak or uncertain prerequisite relationship.",
+        },
       },
-      required: ["source_id", "target_id", "label"],
+      required: ["source_id", "target_id"],
     },
   },
 ];

@@ -147,11 +147,12 @@ export function executeTool(
       }
 
       const id = `${source_id}->${target_id}`;
-      g.edges.push({ id, source: source_id, target: target_id, label });
+      const confidence = inp.confidence !== undefined ? Math.min(1, Math.max(0, inp.confidence as number)) : undefined;
+      g.edges.push({ id, source: source_id, target: target_id, label, ...(confidence !== undefined && { confidence }) });
 
       return {
         graph: g,
-        result: `Added edge from "${source_id}" to "${target_id}" (${label}).`,
+        result: `Added edge from "${source_id}" to "${target_id}" (${label})${confidence !== undefined ? ` with confidence ${confidence.toFixed(2)}` : ""}.`,
       };
     }
 
@@ -176,7 +177,6 @@ export function executeTool(
     case "update_edge": {
       const source_id = inp.source_id as string;
       const target_id = inp.target_id as string;
-      const label = inp.label as string;
       const edge = g.edges.find(
         (e) => e.source === source_id && e.target === target_id
       );
@@ -185,10 +185,22 @@ export function executeTool(
         return { error: `Edge from "${source_id}" to "${target_id}" does not exist.` };
       }
 
-      edge.label = label;
+      const updates: string[] = [];
+      if (inp.label !== undefined) {
+        edge.label = inp.label as string;
+        updates.push(`label to "${edge.label}"`);
+      }
+      if (inp.confidence !== undefined) {
+        edge.confidence = Math.min(1, Math.max(0, inp.confidence as number));
+        updates.push(`confidence to ${edge.confidence.toFixed(2)}`);
+      }
+      if (updates.length === 0) {
+        return { error: `No updates provided for edge from "${source_id}" to "${target_id}".` };
+      }
+
       return {
         graph: g,
-        result: `Updated edge from "${source_id}" to "${target_id}" label to "${label}".`,
+        result: `Updated edge from "${source_id}" to "${target_id}": ${updates.join(", ")}.`,
       };
     }
 
@@ -229,7 +241,7 @@ export function computeMasteryStates(
     const np = progress.nodeProgress[n.id];
     if (!np) return;
     if (masteryMode === 'bkt') {
-      if ((np.pMastery ?? 0) >= 0.90) masteredSet.add(n.id);
+      if ((np.pMastery ?? 0) >= 0.70) masteredSet.add(n.id);
     } else {
       if (np.score !== undefined && np.score >= 80) masteredSet.add(n.id);
     }

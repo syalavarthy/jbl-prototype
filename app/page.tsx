@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ChatMessage, GraphState, MasteryMode, BKTParams, AssessmentResponse,
+  ChatMessage, GraphState, BKTParams, AssessmentResponse,
   NodeProgress, StudentProgress, SeedSuggestions, Suggestion, GraphDisplayModel,
 } from "@/lib/types";
 import GraphCanvas from "@/components/GraphCanvas";
@@ -33,14 +33,13 @@ export default function Home() {
   const [documentText, setDocumentText] = useState("");
   const [initialized, setInitialized] = useState(false);
   const [viewMode, setViewMode] = useState<"edit" | "progress">("edit");
-  const [masteryMode, setMasteryMode] = useState<MasteryMode>("score");
   const [studentProgress, setStudentProgress] = useState<StudentProgress>(DEFAULT_STUDENT);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [seedSuggestions, setSeedSuggestions] = useState<SeedSuggestions>(DEFAULT_SEEDS);
 
   const displayModel: GraphDisplayModel = useMemo(
-    () => computeGraphDisplay(graph, studentProgress, masteryMode, showSuggestions, seedSuggestions),
-    [graph, studentProgress, masteryMode, showSuggestions, seedSuggestions]
+    () => computeGraphDisplay(graph, studentProgress, 'bkt', showSuggestions, seedSuggestions),
+    [graph, studentProgress, showSuggestions, seedSuggestions]
   );
 
   // Restore session from localStorage on mount
@@ -104,18 +103,26 @@ export default function Home() {
         nodeProgress: { ...prev.nodeProgress, [nodeId]: newProgress },
       }));
 
-      // Upgrade edge confidence for outgoing edges when pMastery crosses into progressing
-      if (pMastery >= 0.45) {
-        setGraph((prev) => ({
-          ...prev,
-          edges: prev.edges.map((e) => {
-            if (e.source !== nodeId) return e;
-            if (!studentProgress.nodeProgress[e.target]) return e;
-            const old = e.confidence ?? 0.5;
-            return { ...e, confidence: old + (1 - old) * 0.15 };
-          }),
-        }));
-      }
+      // Update edge confidence live based on scores at both endpoints
+      const normalizedScore = score / 100;
+      setGraph((prev) => ({
+        ...prev,
+        edges: prev.edges.map((e) => {
+          const old = e.confidence ?? 0.5;
+          if (e.source === nodeId) {
+            // Outgoing edge: lerp toward this node's score (20% step)
+            return { ...e, confidence: old + (normalizedScore - old) * 0.2 };
+          }
+          if (e.target === nodeId) {
+            // Incoming edge: lerp toward average score of both endpoints (15% step)
+            const srcProgress = studentProgress.nodeProgress[e.source];
+            if (!srcProgress?.score) return e;
+            const avg = (srcProgress.score / 100 + normalizedScore) / 2;
+            return { ...e, confidence: old + (avg - old) * 0.15 };
+          }
+          return e;
+        }),
+      }));
     },
     [graph.nodes, studentProgress]
   );
@@ -171,7 +178,6 @@ export default function Home() {
 
   const handleResetProgress = useCallback(() => {
     setStudentProgress(DEFAULT_STUDENT);
-    setMasteryMode("score");
     if (initialized) localStorage.setItem(STORAGE_KEYS.students, JSON.stringify(DEFAULT_STUDENT));
   }, [initialized]);
 
@@ -184,7 +190,6 @@ export default function Home() {
     setStudentProgress(DEFAULT_STUDENT);
     setSeedSuggestions(DEFAULT_SEEDS);
     setViewMode("edit");
-    setMasteryMode("score");
     setShowSuggestions(false);
   };
 
@@ -209,20 +214,6 @@ export default function Home() {
               }
             >
               suggestions{showSuggestions ? " ●" : ""}
-            </button>
-          )}
-
-          {viewMode === "progress" && (
-            <button
-              onClick={() => setMasteryMode((m) => (m === "score" ? "bkt" : "score"))}
-              className="text-xs border rounded px-3 py-1.5 transition-colors"
-              style={
-                masteryMode === "bkt"
-                  ? { color: "#a78bfa", borderColor: "#7c3aed" }
-                  : { color: "#4dd4d4", borderColor: "#2ab8b8" }
-              }
-            >
-              {masteryMode === "score" ? "score mode" : "bkt mode"}
             </button>
           )}
 
@@ -265,7 +256,6 @@ export default function Home() {
               graph={graph}
               onNodeMove={handleNodeMove}
               viewMode={viewMode}
-              masteryMode={masteryMode}
               displayModel={displayModel}
               studentProgress={studentProgress}
               onScoreSubmit={handleScoreSubmit}

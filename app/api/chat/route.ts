@@ -14,6 +14,21 @@ Graph structure rules:
 - Edges are directed from prerequisite to dependent: source is learned before target
 - The graph must remain a valid DAG — never create a cycle
 
+Edge confidence:
+- Every edge has an optional confidence value (0.0–1.0) representing how strong/certain the prerequisite relationship is
+- 1.0 = the dependency is definitive (e.g. addition before multiplication)
+- 0.5 = uncertain or context-dependent connection (default for new edges)
+- 0.0 = extremely weak or speculative connection
+- Edges with confidence below 0.5 render as dashed lines in the UI to signal a weak link
+- Confidence is also updated live by student assessment scores — when you set it, you are setting the initial/override value
+- When adding a new edge, set confidence based on how essential the prerequisite truly is; don't default to 1.0 unless it is truly required
+
+Node mastery (read-only context):
+- Student progress is tracked via Bayesian Knowledge Tracing (BKT); each node has a pMastery probability (0.0–1.0)
+- Grade bands: not_started → developing → progressing → proficient (≥0.70) → mastered (≥0.90)
+- A student must reach proficient (pMastery ≥ 0.70) on a node before its dependents unlock
+- You cannot set pMastery directly — it is computed from student assessment responses
+
 Editing rules:
 - Always call get_graph_state before making multiple sequential changes
 - Use readable slug IDs when creating new nodes (e.g. "understanding-lcm")

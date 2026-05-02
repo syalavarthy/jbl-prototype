@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
   Background,
   BackgroundVariant,
@@ -17,7 +17,7 @@ import ReactFlow, {
   useEdgesState,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { GraphState, MasteryMode, GraphDisplayModel, Suggestion, StudentProgress } from "@/lib/types";
+import { GraphState, GraphDisplayModel, Suggestion, StudentProgress } from "@/lib/types";
 import AssessPopover from "@/components/AssessPopover";
 import SuggestionPopover from "@/components/SuggestionPopover";
 import BandedNode, { BandedNodeData } from "@/components/BandedNode";
@@ -29,7 +29,6 @@ interface Props {
   graph: GraphState;
   onNodeMove: (id: string, x: number, y: number) => void;
   viewMode: "edit" | "progress";
-  masteryMode: MasteryMode;
   displayModel: GraphDisplayModel;
   studentProgress: StudentProgress;
   onScoreSubmit: (nodeId: string, score: number) => void;
@@ -256,7 +255,8 @@ function toRFEdges(
   viewMode: "edit" | "progress",
   displayModel: GraphDisplayModel,
   colorMap: Map<string, TopicColor>,
-  onSuggestionClick: (suggestionId: string, rect: DOMRect) => void
+  onSuggestionClick: (suggestionId: string, rect: DOMRect) => void,
+  edgeDeltas: Record<string, "up" | "down">
 ): Edge[] {
   const regular: Edge[] = graph.edges.map((e) => {
     const ed = displayModel.edgeDisplays[e.id];
@@ -279,6 +279,7 @@ function toRFEdges(
         isDashed: ed?.isDashed ?? false,
         confidenceLabel: ed?.confidenceLabel ?? "0.5",
         edgeColor,
+        delta: edgeDeltas[e.id] ?? null,
       } satisfies ConfidenceEdgeData,
     };
   });
@@ -300,11 +301,15 @@ function toRFEdges(
 // ─── GraphCanvasInner ─────────────────────────────────────────────────────────
 
 function GraphCanvasInner({
-  graph, onNodeMove, viewMode, masteryMode,
+  graph, onNodeMove, viewMode,
   displayModel, studentProgress, onScoreSubmit,
   onSuggestionApprove, onSuggestionDismiss,
 }: Props) {
   const colorMap = useMemo(() => buildTopicColorMap(graph.nodes), [graph.nodes]);
+
+  const prevConfidences = useRef<Record<string, number>>({});
+  const deltaTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const [edgeDeltas, setEdgeDeltas] = useState<Record<string, "up" | "down">>({});
 
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [popoverPos, setPopoverPos] = useState<{ x: number; y: number } | null>(null);
@@ -338,7 +343,7 @@ function GraphCanvasInner({
     toRFNodes(graph, colorMap, viewMode, displayModel, handleNodeClick, handleSuggestionClick)
   );
   const [edges, setEdges, onEdgesChange] = useEdgesState(
-    toRFEdges(graph, viewMode, displayModel, colorMap, handleSuggestionClick)
+    toRFEdges(graph, viewMode, displayModel, colorMap, handleSuggestionClick, {})
   );
 
   const handleDragStop: NodeDragHandler = useCallback((_event, node) => {
@@ -349,9 +354,27 @@ function GraphCanvasInner({
     setNodes(toRFNodes(graph, colorMap, viewMode, displayModel, handleNodeClick, handleSuggestionClick));
   }, [graph, colorMap, viewMode, displayModel, handleNodeClick, handleSuggestionClick, setNodes]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Detect per-edge confidence changes and set a timed delta indicator
   useEffect(() => {
-    setEdges(toRFEdges(graph, viewMode, displayModel, colorMap, handleSuggestionClick));
-  }, [graph.edges, viewMode, displayModel, colorMap, handleSuggestionClick, setEdges]); // eslint-disable-line react-hooks/exhaustive-deps
+    graph.edges.forEach((e) => {
+      const conf = displayModel.edgeDisplays[e.id]?.confidence ?? 0.5;
+      const prev = prevConfidences.current[e.id];
+      if (prev !== undefined && conf.toFixed(1) !== prev.toFixed(1)) {
+        const dir: "up" | "down" = conf > prev ? "up" : "down";
+        setEdgeDeltas((d) => ({ ...d, [e.id]: dir }));
+        if (deltaTimers.current[e.id]) clearTimeout(deltaTimers.current[e.id]);
+        const id = e.id;
+        deltaTimers.current[id] = setTimeout(() => {
+          setEdgeDeltas((d) => { const n = { ...d }; delete n[id]; return n; });
+        }, 2000);
+      }
+      prevConfidences.current[e.id] = conf;
+    });
+  }, [graph.edges]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setEdges(toRFEdges(graph, viewMode, displayModel, colorMap, handleSuggestionClick, edgeDeltas));
+  }, [graph.edges, viewMode, displayModel, colorMap, handleSuggestionClick, edgeDeltas, setEdges]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (viewMode !== "progress") { setActiveNodeId(null); setPopoverPos(null); }
@@ -392,7 +415,6 @@ function GraphCanvasInner({
             node={activeGraphNode}
             progress={studentProgress.nodeProgress[activeNodeId!]}
             masteryState={displayModel.nodeDisplays[activeNodeId!]?.masteryState ?? "available"}
-            masteryMode={masteryMode}
             borderColor={(activeRFNode.data as BandedNodeData).borderColor}
             textColor={(activeRFNode.data as BandedNodeData).textColor}
             onSubmit={(score) => { onScoreSubmit(activeNodeId!, score); }}
