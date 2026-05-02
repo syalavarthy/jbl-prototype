@@ -2,6 +2,18 @@
 
 import { EdgeProps, getBezierPath, EdgeLabelRenderer, BaseEdge } from "reactflow";
 
+if (typeof document !== "undefined" && !document.getElementById("suggestion-pulse-style")) {
+  const style = document.createElement("style");
+  style.id = "suggestion-pulse-style";
+  style.textContent = `
+    @keyframes suggestion-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 #f0b42922; opacity: 0.75; }
+      50% { box-shadow: 0 0 0 10px #f0b42900; opacity: 1.0; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 export interface SuggestionEdgeData {
   suggestionId: string;
   onSuggestionClick?: (suggestionId: string, rect: DOMRect) => void;
