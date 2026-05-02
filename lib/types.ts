@@ -14,6 +14,7 @@ export interface GraphEdge {
   source: string;
   target: string;
   label?: string;
+  confidence?: number;
 }
 
 export interface GraphState {
@@ -69,4 +70,74 @@ export interface StudentProgress {
   studentId: string;
   studentName: string;
   nodeProgress: Record<string, NodeProgress>;
+}
+
+export type GradeBand =
+  | 'not_started'
+  | 'developing'
+  | 'progressing'
+  | 'proficient'
+  | 'mastered'
+  | 'struggling';
+
+export interface NodeDisplayData {
+  masteryState: MasteryState;
+  gradeBand: GradeBand;
+  fillPct: number;
+  pMastery: number;
+  labelOpacity: number;
+  learningVelocity: number;
+  borderThicknessPx: number;
+}
+
+export interface EdgeDisplayData {
+  confidence: number;
+  isDashed: boolean;
+  confidenceLabel: string;
+}
+
+export interface SuggestionNodeDisplay {
+  isSuggestion: true;
+  suggestionId: string;
+  label: string;
+  position: { x: number; y: number };
+}
+
+export interface SuggestionEdgeDisplay {
+  isSuggestion: true;
+  suggestionId: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+}
+
+export interface BridgeSuggestion {
+  id: string;
+  type: 'bridge_node';
+  label: string;
+  targetNodeId: string;
+  sourceNodeId: string;
+  reason: string;
+}
+
+export interface MissingEdgeSuggestion {
+  id: string;
+  type: 'missing_edge';
+  sourceNodeId: string;
+  targetNodeId: string;
+  reason: string;
+}
+
+export type Suggestion = BridgeSuggestion | MissingEdgeSuggestion;
+
+export interface SeedSuggestions {
+  bridgeSuggestions: BridgeSuggestion[];
+  edgeSuggestions: MissingEdgeSuggestion[];
+}
+
+export interface GraphDisplayModel {
+  nodeDisplays: Record<string, NodeDisplayData>;
+  edgeDisplays: Record<string, EdgeDisplayData>;
+  suggestionNodeDisplays: SuggestionNodeDisplay[];
+  suggestionEdgeDisplays: SuggestionEdgeDisplay[];
+  suggestions: Suggestion[];
 }
