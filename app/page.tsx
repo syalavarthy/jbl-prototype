@@ -128,17 +128,11 @@ export default function Home() {
   );
 
   const handleGraphGenerated = useCallback(
-    (newGraph: GraphState, text: string, suggestions: SeedSuggestions, nodeVelocitySeeds: Record<string, number>) => {
+    (newGraph: GraphState, text: string, suggestions: SeedSuggestions) => {
       setGraph(newGraph);
       setDocumentText(text);
       setSeedSuggestions(suggestions);
-      setStudentProgress((prev) => {
-        const seeded = { ...prev.nodeProgress };
-        Object.entries(nodeVelocitySeeds).forEach(([nodeId, attempts]) => {
-          if (!seeded[nodeId]) seeded[nodeId] = { nodeId, attempts };
-        });
-        return { ...prev, nodeProgress: seeded };
-      });
+      setStudentProgress(DEFAULT_STUDENT);
       setInitialized(true);
     },
     []
@@ -198,7 +192,7 @@ export default function Home() {
       <header className="flex items-center justify-between px-6 py-3 bg-[#141414] border-b border-[#2a2a2a] flex-shrink-0">
         <div>
           <h1 className="text-sm font-medium text-[#e8e8e8] tracking-wide">jbl prototype</h1>
-          <p className="text-xs text-[#555]">knowledge graph generator + editor</p>
+          <p className="text-xs text-[#555]">KG-based agentic individual learning system</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
 

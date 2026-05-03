@@ -230,7 +230,6 @@ function toRFNodes(
         pMastery: nd?.pMastery ?? 0,
         labelOpacity: nd?.labelOpacity ?? 0.35,
         borderThicknessPx: nd?.borderThicknessPx ?? 1,
-        learningVelocity: nd?.learningVelocity ?? 0,
         onNodeClick,
       } satisfies BandedNodeData,
     };

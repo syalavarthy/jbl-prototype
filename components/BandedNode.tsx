@@ -16,7 +16,6 @@ export interface BandedNodeData {
   pMastery: number;
   labelOpacity: number;
   borderThicknessPx: number;
-  learningVelocity: number;
   onNodeClick?: (nodeId: string, rect: DOMRect) => void;
 }
 
@@ -35,7 +34,7 @@ export default function BandedNode({ data }: NodeProps<BandedNodeData>) {
   const {
     label, nodeId, borderColor, textColor, bgColor,
     masteryState, isFrontier, gradeBand,
-    fillPct, labelOpacity, borderThicknessPx, learningVelocity,
+    fillPct, labelOpacity, borderThicknessPx,
     onNodeClick,
   } = data;
 
@@ -45,7 +44,7 @@ export default function BandedNode({ data }: NodeProps<BandedNodeData>) {
 
   return (
     <div
-      className="relative group"
+      className="relative"
       onClick={(e) => {
         if (onNodeClick) {
           const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -141,21 +140,6 @@ export default function BandedNode({ data }: NodeProps<BandedNodeData>) {
           })}
 
         <span style={{ position: "relative", zIndex: 1 }}>{label}</span>
-      </div>
-
-      <div
-        className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 pointer-events-none opacity-0 group-hover:opacity-100"
-        style={{
-          background: "#0f0f0f",
-          border: `1px solid ${handleBg}`,
-          borderRadius: "3px",
-          padding: "4px 8px",
-          fontSize: "9px",
-          color: "#888",
-          whiteSpace: "nowrap",
-        }}
-      >
-        velocity: {learningVelocity} attempts
       </div>
 
       <Handle

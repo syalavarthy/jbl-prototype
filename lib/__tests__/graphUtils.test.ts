@@ -156,11 +156,6 @@ describe('computeGraphDisplay node display derivations', () => {
     expect(r.nodeDisplays['a'].borderThicknessPx).toBe(expectedPx)
   })
 
-  it('learningVelocity equals attempts', () => {
-    const progress = { ...emptyProgress, nodeProgress: { a: { nodeId: 'a', attempts: 4, pMastery: 0.6 } } }
-    const r = computeGraphDisplay(singleNodeGraph, progress, 'bkt', false, emptySeeds)
-    expect(r.nodeDisplays['a'].learningVelocity).toBe(4)
-  })
 })
 
 // ─── computeGraphDisplay — edge display ─────────────────────────────────────

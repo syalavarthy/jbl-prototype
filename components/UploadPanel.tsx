@@ -6,15 +6,13 @@ import { GraphState, SeedSuggestions } from "@/lib/types";
 interface GenerateApiResponse {
   graph: GraphState;
   suggestions: SeedSuggestions;
-  nodeVelocitySeeds: Record<string, number>;
 }
 
 interface Props {
   onGraphGenerated: (
     graph: GraphState,
     documentText: string,
-    suggestions: SeedSuggestions,
-    nodeVelocitySeeds: Record<string, number>
+    suggestions: SeedSuggestions
   ) => void;
 }
 
@@ -52,8 +50,8 @@ export default function UploadPanel({ onGraphGenerated }: Props) {
         throw new Error(err.error ?? "graph generation failed");
       }
 
-      const { graph, suggestions, nodeVelocitySeeds } = await generateRes.json() as GenerateApiResponse;
-      onGraphGenerated(graph, text, suggestions, nodeVelocitySeeds);
+      const { graph, suggestions } = await generateRes.json() as GenerateApiResponse;
+      onGraphGenerated(graph, text, suggestions);
     } catch (err) {
       setError(err instanceof Error ? err.message : "an unexpected error occurred.");
     } finally {

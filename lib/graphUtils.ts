@@ -338,7 +338,6 @@ export function computeGraphDisplay(
       fillPct: FILL_PCT[gradeBand],
       pMastery,
       labelOpacity: Math.max(0.35, pMastery * 0.7 + 0.28),
-      learningVelocity: attempts,
       borderThicknessPx: deriveBorderThickness(attempts),
     };
   });

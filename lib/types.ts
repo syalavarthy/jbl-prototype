@@ -86,7 +86,6 @@ export interface NodeDisplayData {
   fillPct: number;
   pMastery: number;
   labelOpacity: number;
-  learningVelocity: number;
   borderThicknessPx: number;
 }
 

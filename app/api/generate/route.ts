@@ -2,15 +2,7 @@ import { getAnthropicClient } from "@/lib/anthropic";
 import { assignPositions } from "@/lib/graphUtils";
 import { GraphState, SeedSuggestions } from "@/lib/types";
 
-type NodeDifficulty = 'foundational' | 'standard' | 'challenging';
-
-const DIFFICULTY_SEEDS: Record<NodeDifficulty, number> = {
-  foundational: 1,
-  standard: 2,
-  challenging: 4,
-};
-
-const GENERATE_PROMPT = `You are a curriculum knowledge graph builder. Extract learnable concepts from a curriculum document and arrange them as a DAG. Also emit edge confidence scores, node difficulty hints, and agentic suggestions.
+const GENERATE_PROMPT = `You are a curriculum knowledge graph builder. Extract learnable concepts from a curriculum document and arrange them as a DAG. Also emit edge confidence scores and agentic suggestions.
 
 WHAT TO EXTRACT:
 - Only include concepts a student can learn, practise, and be tested on
@@ -31,8 +23,7 @@ Return a single JSON object with this exact shape:
       "id": "string",           // readable slug e.g. "understanding-lcm"
       "label": "string",        // short concept name e.g. "Understanding LCM"
       "topic": "string",        // subject area e.g. "Fractions"
-      "description": "string",  // one sentence: what the student will be able to do
-      "difficulty": "foundational" | "standard" | "challenging"
+      "description": "string"   // one sentence: what the student will be able to do
     }
   ],
   "edges": [
@@ -83,7 +74,6 @@ interface LLMNode {
   label: string;
   topic: string;
   description?: string;
-  difficulty?: NodeDifficulty;
 }
 
 interface LLMEdge {
@@ -139,27 +129,17 @@ export async function POST(request: Request): Promise<Response> {
 
   const llmResponse = JSON.parse(rawText) as LLMResponse;
 
-  // Strip difficulty from nodes — ephemeral, not stored in GraphNode
-  const graphNodes = llmResponse.nodes.map(({ difficulty: _d, ...rest }) => rest);
-  const nodesWithPositions = assignPositions(graphNodes, llmResponse.edges);
+  const nodesWithPositions = assignPositions(llmResponse.nodes, llmResponse.edges);
 
   const graph: GraphState = {
     nodes: nodesWithPositions,
     edges: llmResponse.edges,
   };
 
-  // Compute velocity seeds from difficulty
-  const nodeVelocitySeeds: Record<string, number> = {};
-  llmResponse.nodes.forEach((n) => {
-    if (n.difficulty) {
-      nodeVelocitySeeds[n.id] = DIFFICULTY_SEEDS[n.difficulty];
-    }
-  });
-
   const suggestions: SeedSuggestions = {
     bridgeSuggestions: llmResponse.suggestions?.bridgeSuggestions ?? [],
     edgeSuggestions: llmResponse.suggestions?.edgeSuggestions ?? [],
   };
 
-  return Response.json({ graph, suggestions, nodeVelocitySeeds });
+  return Response.json({ graph, suggestions });
 }
